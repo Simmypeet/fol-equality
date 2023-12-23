@@ -4,10 +4,10 @@ use proptest::{
     arbitrary::Arbitrary,
     prop_assert, prop_oneof, proptest,
     strategy::{BoxedStrategy, Strategy},
-    test_runner::Config,
+    test_runner::{Config, TestCaseError},
 };
 
-use crate::{equals, Function, Premise, Term};
+use crate::{equals, visitor::Visitor, Function, Premise, Term};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ID(usize);
@@ -60,7 +60,7 @@ pub trait Property: 'static + Send + Sync + Debug {
     fn terms(&self) -> (Term<ID>, Term<ID>);
 
     /// Applies the property to the premise.
-    fn apply(&self, premise: &mut Premise<ID>);
+    fn apply(&self, premise: &mut Premise<ID>) -> bool;
 }
 
 impl Arbitrary for Box<dyn Property> {
@@ -70,10 +70,11 @@ impl Arbitrary for Box<dyn Property> {
     fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
         let leaf = Identity::arbitrary().prop_map(|x| Box::new(x) as _);
 
-        leaf.prop_recursive(32, 64, 2, |inner| {
+        leaf.prop_recursive(64, 128, 2, |inner| {
             prop_oneof![
-                2 => Mapping::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
-                2 => Unification::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
+                Mapping::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
+                Unification::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
+                Normalization::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
             ]
         })
         .boxed()
@@ -104,7 +105,9 @@ impl Property for Identity {
         (self.term.clone(), self.term.clone())
     }
 
-    fn apply(&self, _: &mut Premise<ID>) {}
+    fn apply(&self, _: &mut Premise<ID>) -> bool {
+        true
+    }
 }
 
 #[derive(Debug)]
@@ -147,14 +150,13 @@ impl Property for Mapping {
         (l_lhs, r_rhs)
     }
 
-    fn apply(&self, premise: &mut Premise<ID>) {
-        self.lhs_property.apply(premise);
-        self.rhs_property.apply(premise);
-
+    fn apply(&self, premise: &mut Premise<ID>) -> bool {
         let (_, l_rhs) = self.lhs_property.terms();
         let (r_lhs, _) = self.rhs_property.terms();
 
         premise.insert(l_rhs, r_lhs);
+
+        self.lhs_property.apply(premise) && self.rhs_property.apply(premise)
     }
 }
 
@@ -208,10 +210,127 @@ impl Property for Unification {
         )
     }
 
-    fn apply(&self, premise: &mut Premise<ID>) {
+    fn apply(&self, premise: &mut Premise<ID>) -> bool {
         for property in &self.arguments_property {
-            property.apply(premise);
+            if !property.apply(premise) {
+                return false;
+            }
         }
+
+        true
+    }
+}
+
+#[derive(Debug)]
+pub struct Normalization {
+    property: Box<dyn Property>,
+    literal_identifier: ID,
+    substituted_term: Term<ID>,
+    normalizable_literal: ID,
+    normalizable_at_lhs: bool,
+}
+
+struct TermCollector {
+    terms: Vec<Term<ID>>,
+}
+
+impl Visitor<ID> for TermCollector {
+    fn visit(&mut self, term: &Term<ID>) -> bool {
+        self.terms.push(term.clone());
+        true
+    }
+}
+
+impl Arbitrary for Normalization {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Option<BoxedStrategy<Box<dyn Property>>>;
+
+    fn arbitrary_with(arg: Self::Parameters) -> Self::Strategy {
+        let strat = arg.unwrap_or_else(Box::<dyn Property>::arbitrary);
+
+        (
+            proptest::num::usize::ANY,
+            proptest::bool::ANY,
+            strat,
+            ID::arbitrary(),
+            ID::arbitrary(),
+        )
+            .prop_filter_map(
+                "filter out crashin ids",
+                |(modulo, normalizable_at_lhs, strat, normalizable_literal, literal_identifier)| {
+                    let equiv = if normalizable_at_lhs {
+                        strat.terms().0
+                    } else {
+                        strat.terms().1
+                    };
+
+                    let mut term_collector = TermCollector { terms: Vec::new() };
+                    equiv.visit(&mut term_collector);
+
+                    if term_collector
+                        .terms
+                        .contains(&Term::Literal(normalizable_literal))
+                        || term_collector.terms.is_empty()
+                    {
+                        return None;
+                    }
+
+                    let term_index = modulo % term_collector.terms.len();
+                    let substituted_term = term_collector.terms.remove(term_index);
+
+                    Some(Self {
+                        property: strat,
+                        literal_identifier,
+                        substituted_term,
+                        normalizable_literal,
+                        normalizable_at_lhs,
+                    })
+                },
+            )
+            .prop_filter("filter out trivially equals", |x| {
+                let (lhs, rhs) = x.terms();
+
+                lhs != rhs
+            })
+            .boxed()
+    }
+}
+
+impl Property for Normalization {
+    fn requires_premise(&self) -> bool {
+        true
+    }
+
+    fn terms(&self) -> (Term<ID>, Term<ID>) {
+        let normalizable = Term::Normalizable(crate::Normalizable {
+            symbol: self.literal_identifier,
+            arguments: vec![self.substituted_term.clone()],
+        });
+
+        if self.normalizable_at_lhs {
+            (normalizable, self.property.terms().1)
+        } else {
+            (self.property.terms().0, normalizable)
+        }
+    }
+
+    fn apply(&self, premise: &mut Premise<ID>) -> bool {
+        if !self.property.apply(premise) {
+            return false;
+        }
+
+        premise.insert_normalization(self.literal_identifier, vec![self.normalizable_literal], {
+            let (lhs, rhs) = self.property.terms();
+
+            let mut normalized = if self.normalizable_at_lhs { lhs } else { rhs };
+
+            normalized.apply(
+                &self.substituted_term,
+                &Term::Literal(self.normalizable_literal),
+            );
+
+            normalized
+        })
     }
 }
 
@@ -232,7 +351,9 @@ proptest! {
             // without premise the equality should not hold
             prop_assert!(!equals(&term1, &term2, &premise));
 
-            property.apply(&mut premise);
+            if !property.apply(&mut premise) {
+                return Err(TestCaseError::reject("skip failed property application"))
+            }
         }
 
         let mapping_count = premise
@@ -241,7 +362,6 @@ proptest! {
             .map(BTreeSet::len).sum::<usize>();
 
         println!("mapping count: {mapping_count}");
-
 
         // now the equality should hold
         prop_assert!(equals(&term1, &term2, &premise));

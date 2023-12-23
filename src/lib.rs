@@ -1,14 +1,19 @@
 //! Implementation of the equality algorithm in the First-Order Logic system.
 
 mod premise;
+mod substitution;
 mod term;
+mod visitor;
 
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+pub use premise::Normalization;
 pub use premise::Premise;
+
 pub use term::Function;
+pub use term::Normalizable;
 pub use term::Term;
 
 fn equals_by_unification<Literal: Ord + Eq + Hash + Clone + Debug>(
@@ -27,6 +32,16 @@ fn equals_by_unification<Literal: Ord + Eq + Hash + Clone + Debug>(
                 symbol: name2,
                 arguments: args2,
             }),
+        )
+        | (
+            Term::Normalizable(Normalizable {
+                symbol: name1,
+                arguments: args1,
+            }),
+            Term::Normalizable(Normalizable {
+                symbol: name2,
+                arguments: args2,
+            }),
         ) if name1 == name2 && args1.len() == args2.len() => {
             let mut unification_succeed = true;
             for (arg1, arg2) in args1.iter().zip(args2.iter()) {
@@ -40,6 +55,31 @@ fn equals_by_unification<Literal: Ord + Eq + Hash + Clone + Debug>(
         }
         _ => false,
     }
+}
+
+fn equals_by_normalization<Literal: Ord + Eq + Hash + Clone + Debug>(
+    term1: &Term<Literal>,
+    term2: &Term<Literal>,
+    premise: &Premise<Literal>,
+    visited: &mut BTreeSet<(Term<Literal>, Term<Literal>)>,
+) -> bool {
+    if let Term::Normalizable(term1) = term1 {
+        if let Some(normalization) = premise.get_normalization(&term1.symbol) {
+            if let Some(equivalence) = normalization.equivalence(&term1.arguments) {
+                return dfs(&equivalence, term2, premise, visited);
+            }
+        }
+    }
+
+    if let Term::Normalizable(term2) = term2 {
+        if let Some(normalization) = premise.get_normalization(&term2.symbol) {
+            if let Some(equivalence) = normalization.equivalence(&term2.arguments) {
+                return dfs(term1, &equivalence, premise, visited);
+            }
+        }
+    }
+
+    false
 }
 
 fn dfs<Literal: Eq + Ord + Hash + Clone + Debug>(
@@ -63,6 +103,12 @@ fn dfs<Literal: Eq + Ord + Hash + Clone + Debug>(
         return true;
     }
 
+    // try to normalize
+    if equals_by_normalization(term, term2, premise, visited) {
+        visited.remove(&(term.clone(), term2.clone()));
+        return true;
+    }
+
     // try to look for a mapping in the premise
     if let Some(equivalences) = premise.equalities().get(term) {
         for equivalence in equivalences {
@@ -73,9 +119,11 @@ fn dfs<Literal: Eq + Ord + Hash + Clone + Debug>(
         }
     }
 
-    // try to unify in the premise
+    // try to unify/normalize the premise
     for (key, values) in premise.equalities() {
-        if !equals_by_unification(term, key, premise, visited) {
+        if !(equals_by_unification(term, key, premise, visited)
+            || equals_by_normalization(term, key, premise, visited))
+        {
             continue;
         }
 

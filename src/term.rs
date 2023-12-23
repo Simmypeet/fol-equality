@@ -13,12 +13,21 @@ pub struct Function<Literal: Ord + Eq + Hash + Clone + Debug> {
     pub arguments: Vec<Term<Literal>>,
 }
 
+/// Represents a term which can be normalized into another term without mapping equalities.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Normalizable<Literal: Ord + Eq + Hash + Clone + Debug> {
+    /// The literal identifier.
+    pub symbol: Literal,
+
+    /// The arguments supplied to the function.
+    pub arguments: Vec<Term<Literal>>,
+}
+
 /// Represents a term used in equalities.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[allow(missing_docs)]
 pub enum Term<Literal: Ord + Eq + Hash + Clone + Debug> {
-    /// The most basic term, a constant.
     Literal(Literal),
-
-    /// A function term with a list of arguments.
     Function(Function<Literal>),
+    Normalizable(Normalizable<Literal>),
 }

@@ -122,7 +122,9 @@ fn dfs<Literal: Eq + Ord + Hash + Clone + Debug>(
     // try to unify/normalize the premise
     for (key, values) in premise.equalities() {
         if !(equals_by_unification(term, key, premise, visited)
-            || equals_by_normalization(term, key, premise, visited))
+            || equals_by_normalization(term, key, premise, visited)
+            // don't forget to normalize the term2
+            || equals_by_unification(key, term2, premise, visited))
         {
             continue;
         }

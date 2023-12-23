@@ -10,7 +10,7 @@ use crate::Term;
 ///
 /// For example, the premise
 ///
-/// ``` no_run
+/// ``` txt
 /// x = y,
 /// x = z,
 /// z = y,

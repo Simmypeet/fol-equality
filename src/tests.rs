@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, fmt::Debug};
+use std::fmt::Debug;
 
 use proptest::{
     arbitrary::Arbitrary,
@@ -70,7 +70,7 @@ impl Arbitrary for Box<dyn Property> {
     fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
         let leaf = Identity::arbitrary().prop_map(|x| Box::new(x) as _);
 
-        leaf.prop_recursive(64, 128, 2, |inner| {
+        leaf.prop_recursive(128, 256, 2, |inner| {
             prop_oneof![
                 Mapping::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
                 Unification::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
@@ -173,7 +173,7 @@ impl Arbitrary for Unification {
     fn arbitrary_with(arg: Self::Parameters) -> Self::Strategy {
         let strat = arg.unwrap_or_else(Box::<dyn Property>::arbitrary);
 
-        (ID::arbitrary(), proptest::collection::vec(strat, 0..=4))
+        (ID::arbitrary(), proptest::collection::vec(strat, 2..=4))
             .prop_map(|(symbol, arguments_property)| Self {
                 arguments_property,
                 symbol,
@@ -270,7 +270,6 @@ impl Arbitrary for Normalization {
                     if term_collector
                         .terms
                         .contains(&Term::Literal(normalizable_literal))
-                        || term_collector.terms.is_empty()
                     {
                         return None;
                     }
@@ -336,7 +335,7 @@ impl Property for Normalization {
 
 proptest! {
     #![proptest_config(Config {
-        cases: 1000,
+        cases: 4000,
         max_shrink_iters: 1_000_000,
         ..Default::default()
     })]
@@ -355,13 +354,6 @@ proptest! {
                 return Err(TestCaseError::reject("skip failed property application"))
             }
         }
-
-        let mapping_count = premise
-            .equalities()
-            .values()
-            .map(BTreeSet::len).sum::<usize>();
-
-        println!("mapping count: {mapping_count}");
 
         // now the equality should hold
         prop_assert!(equals(&term1, &term2, &premise));
@@ -451,4 +443,36 @@ fn congruence() {
 
     assert!(!equals(&not_equal, &term1, &premise));
     assert!(!equals(&not_equal, &term2, &premise));
+}
+
+#[test]
+fn recursive_term() {
+    let premise = Premise::new_with_equalities([(
+        Term::Literal(ID(0)),
+        Term::Function(Function {
+            symbol: ID(0),
+            arguments: vec![Term::Literal(ID(0))],
+        }),
+    )]);
+
+    let lhs = Term::Function(Function {
+        symbol: ID(0),
+        arguments: vec![Term::Literal(ID(0))],
+    });
+    let rhs = Term::Function(Function {
+        symbol: ID(0),
+        arguments: vec![Term::Function(Function {
+            symbol: ID(0),
+            arguments: vec![Term::Function(Function {
+                symbol: ID(0),
+                arguments: vec![Term::Function(Function {
+                    symbol: ID(0),
+                    arguments: vec![Term::Literal(ID(0))],
+                })],
+            })],
+        })],
+    });
+
+    assert!(equals(&lhs, &rhs, &premise));
+    assert!(equals(&rhs, &lhs, &premise));
 }

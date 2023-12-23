@@ -5,15 +5,11 @@ first-order theorem prover, but rather a tool for checking equality of terms.
 
 These are four axioms of equality this implementation follows:
 
-$$
-\begin{array}{lll}
-1. & \forall x (x = x) & \text{reflexivity} \\
-2. & \forall x \forall y (x = y \iff y = x) & \text{symmetry} \\
-3. & \forall x \forall y \forall z (x = y \land y = z \implies x = z) & \text{transitivity}\\
-4. & \forall x_1 \ldots \forall x_n \forall y_1 \ldots \forall y_n (x_1 = y_1 \land \ldots \land x_n = y_n \implies f(x_1, \ldots, x_n) = f(y_1, \ldots, y_n)) & \text{congruence}
-\end{array}
-$$
-
+- $\forall x (x = x)$ (reflexivity)
+- $\forall x \forall y (x = y \iff y = x)$ (symmetry)
+- $\forall x \forall y \forall z (x = y \land y = z \implies x = z)$ (transitivity)
+- $\forall x_1 \ldots \forall x_n \forall y_1 \ldots \forall y_n (x_1 = y_1 \land \ldots \land x_n = y_n \implies f(x_1, \ldots, x_n) = f(y_1, \ldots, y_n))$ (congruence)
+  
 ## Example
 
 ```rust

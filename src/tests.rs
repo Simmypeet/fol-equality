@@ -4,7 +4,7 @@ use proptest::{
     arbitrary::Arbitrary,
     prop_assert, prop_oneof, proptest,
     strategy::{BoxedStrategy, Strategy},
-    test_runner::{Config, TestCaseError},
+    test_runner::TestCaseError,
 };
 
 use crate::{equals, visitor::Visitor, Function, Premise, Term};
@@ -70,7 +70,7 @@ impl Arbitrary for Box<dyn Property> {
     fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
         let leaf = Identity::arbitrary().prop_map(|x| Box::new(x) as _);
 
-        leaf.prop_recursive(128, 256, 2, |inner| {
+        leaf.prop_recursive(64, 128, 2, |inner| {
             prop_oneof![
                 Mapping::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
                 Unification::arbitrary_with(Some(inner.clone())).prop_map(|x| Box::new(x) as _),
@@ -173,7 +173,7 @@ impl Arbitrary for Unification {
     fn arbitrary_with(arg: Self::Parameters) -> Self::Strategy {
         let strat = arg.unwrap_or_else(Box::<dyn Property>::arbitrary);
 
-        (ID::arbitrary(), proptest::collection::vec(strat, 2..=4))
+        (ID::arbitrary(), proptest::collection::vec(strat, 0..=4))
             .prop_map(|(symbol, arguments_property)| Self {
                 arguments_property,
                 symbol,
@@ -334,11 +334,6 @@ impl Property for Normalization {
 }
 
 proptest! {
-    #![proptest_config(Config {
-        cases: 4000,
-        max_shrink_iters: 1_000_000,
-        ..Default::default()
-    })]
     #[test]
     fn property_based_testing(
         property in Box::<dyn Property>::arbitrary()

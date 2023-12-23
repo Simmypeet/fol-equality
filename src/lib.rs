@@ -112,7 +112,15 @@ fn dfs<Literal: Eq + Ord + Hash + Clone + Debug>(
     // try to look for a mapping in the premise
     if let Some(equivalences) = premise.equalities().get(term) {
         for equivalence in equivalences {
-            if dfs(term2, equivalence, premise, visited) {
+            if dfs(equivalence, term2, premise, visited) {
+                visited.remove(&(term.clone(), term2.clone()));
+                return true;
+            }
+        }
+    }
+    if let Some(equivalences) = premise.equalities().get(term2) {
+        for equivalence in equivalences {
+            if dfs(term, equivalence, premise, visited) {
                 visited.remove(&(term.clone(), term2.clone()));
                 return true;
             }
@@ -121,18 +129,39 @@ fn dfs<Literal: Eq + Ord + Hash + Clone + Debug>(
 
     // try to unify/normalize the premise
     for (key, values) in premise.equalities() {
-        if !(equals_by_unification(term, key, premise, visited)
-            || equals_by_normalization(term, key, premise, visited)
-            // don't forget to normalize the term2
-            || equals_by_unification(key, term2, premise, visited))
-        {
-            continue;
+        if equals_by_unification(term, key, premise, visited) {
+            for value in values {
+                if dfs(value, term2, premise, visited) {
+                    visited.remove(&(term.clone(), term2.clone()));
+                    return true;
+                }
+            }
         }
 
-        for value in values {
-            if dfs(term2, value, premise, visited) {
-                visited.remove(&(term.clone(), term2.clone()));
-                return true;
+        if equals_by_unification(key, term2, premise, visited) {
+            for value in values {
+                if dfs(term, value, premise, visited) {
+                    visited.remove(&(term.clone(), term2.clone()));
+                    return true;
+                }
+            }
+        }
+
+        if equals_by_normalization(term, key, premise, visited) {
+            for value in values {
+                if dfs(value, term2, premise, visited) {
+                    visited.remove(&(term.clone(), term2.clone()));
+                    return true;
+                }
+            }
+        }
+
+        if equals_by_normalization(key, term2, premise, visited) {
+            for value in values {
+                if dfs(term, value, premise, visited) {
+                    visited.remove(&(term.clone(), term2.clone()));
+                    return true;
+                }
             }
         }
     }
@@ -147,6 +176,7 @@ pub fn equals<Literal: Ord + Eq + Hash + Clone + Debug>(
     term2: &Term<Literal>,
     premise: &Premise<Literal>,
 ) -> bool {
+    // guaranteed to have at least 32K of stack
     let mut visited = BTreeSet::new();
 
     dfs(term1, term2, premise, &mut visited)

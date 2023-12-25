@@ -1,8 +1,8 @@
-use std::collections::btree_map::Entry;
+use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{HashMap, HashSet};
 
 use crate::Term;
 
@@ -30,10 +30,10 @@ use crate::Term;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Premise<Literal: Ord + Eq + Hash + Clone + Debug> {
     /// A map from a term to a set of terms that are equal to it.
-    equalities: BTreeMap<Term<Literal>, BTreeSet<Term<Literal>>>,
+    equalities: HashMap<Term<Literal>, HashSet<Term<Literal>>>,
 
     /// A map from a term to its normalization.
-    normalizables: BTreeMap<Literal, Normalization<Literal>>,
+    normalizables: HashMap<Literal, Normalization<Literal>>,
 }
 
 /// Represents a normalization symbol.
@@ -68,8 +68,8 @@ impl<Literal: Ord + Eq + Hash + Clone + Debug> Normalization<Literal> {
 impl<Literal: Ord + Eq + Hash + Clone + Debug> Default for Premise<Literal> {
     fn default() -> Self {
         Self {
-            equalities: BTreeMap::default(),
-            normalizables: BTreeMap::default(),
+            equalities: HashMap::default(),
+            normalizables: HashMap::default(),
         }
     }
 }
@@ -77,7 +77,7 @@ impl<Literal: Ord + Eq + Hash + Clone + Debug> Default for Premise<Literal> {
 impl<Literal: Ord + Eq + Hash + Clone + Debug> Premise<Literal> {
     /// Returns the equalities in the premise.
     #[must_use]
-    pub const fn equalities(&self) -> &BTreeMap<Term<Literal>, BTreeSet<Term<Literal>>> {
+    pub const fn equalities(&self) -> &HashMap<Term<Literal>, HashSet<Term<Literal>>> {
         &self.equalities
     }
 

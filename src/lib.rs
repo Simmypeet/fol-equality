@@ -5,7 +5,7 @@ mod substitution;
 mod term;
 mod visitor;
 
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -20,7 +20,7 @@ fn equals_by_unification<Literal: Ord + Eq + Hash + Clone + Debug>(
     term1: &Term<Literal>,
     term2: &Term<Literal>,
     premise: &Premise<Literal>,
-    visited: &mut BTreeSet<(Term<Literal>, Term<Literal>)>,
+    visited: &mut HashSet<(Term<Literal>, Term<Literal>)>,
 ) -> bool {
     match (term1, term2) {
         (
@@ -61,7 +61,7 @@ fn equals_by_normalization<Literal: Ord + Eq + Hash + Clone + Debug>(
     term1: &Term<Literal>,
     term2: &Term<Literal>,
     premise: &Premise<Literal>,
-    visited: &mut BTreeSet<(Term<Literal>, Term<Literal>)>,
+    visited: &mut HashSet<(Term<Literal>, Term<Literal>)>,
 ) -> bool {
     if let Term::Normalizable(term1) = term1 {
         if let Some(normalization) = premise.get_normalization(&term1.symbol) {
@@ -86,7 +86,7 @@ fn dfs<Literal: Eq + Ord + Hash + Clone + Debug>(
     term: &Term<Literal>,
     term2: &Term<Literal>,
     premise: &Premise<Literal>,
-    visited: &mut BTreeSet<(Term<Literal>, Term<Literal>)>,
+    visited: &mut HashSet<(Term<Literal>, Term<Literal>)>,
 ) -> bool {
     if term == term2 {
         return true;
@@ -177,7 +177,7 @@ pub fn equals<Literal: Ord + Eq + Hash + Clone + Debug>(
     premise: &Premise<Literal>,
 ) -> bool {
     // guaranteed to have at least 32K of stack
-    let mut visited = BTreeSet::new();
+    let mut visited = HashSet::new();
 
     dfs(term1, term2, premise, &mut visited)
 }
